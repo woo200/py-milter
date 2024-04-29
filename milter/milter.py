@@ -63,6 +63,9 @@ class MailerConnection:
 
     def __init__(self, job_id: str) -> None:
         self.job_id = job_id
+    
+    def __repr__(self) -> str:
+        return f"MailerConnection(job_id=\"{self.job_id}\", sender_info={self.sender_info}, recipient_info={self.recipient_info}, body=..., headers=...)"
 
 MAILERCONNATTRS = list(MailerConnection.__annotations__.keys())
 
@@ -250,8 +253,6 @@ class Milter:
 
                 packet = COMMAND_TABLE[command].read(packet_len-1, connection)
 
-                print(packet)
-
                 if command == Commands.SMFIC_QUIT:
                     connection.close()
                     break
@@ -295,6 +296,7 @@ class Milter:
                     # We recieved a new recipient
                     elif command == Commands.SMFIC_RCPT:
                         current_job.recipient_info.append(Address(packet.mail_to, packet.ESMTP_args))
+                        print(current_job)
                         connection.send(milter.net.packet.PContinue().serialize())
 
                     # We recieved something we need to respond to
