@@ -8,7 +8,7 @@ To use Py-Milter, first clone the repo and put it in your project directory. It 
 
 ## Usage
 
-***If you dont understand something, see section [WTF is a Milter?](#WTF-is-a-Milter?)***
+***If you dont understand something, see section [WTF is a Milter?](#wtf-is-a-milter)***
 The primary component of Py-Milter are processors, processors are functions that accept 1 argument. 
 ```python
 def processor(mailpiece: milter.MailPiece) -> None:
