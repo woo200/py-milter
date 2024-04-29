@@ -319,6 +319,10 @@ class Milter:
                         for processor in self.processors:
                             processor(mailpiece)
                         mailpiece.send_response(connection)
+                        state = MilterState.CONNECT
+                        current_job = None
+                        jobs = {}
+                        continue
 
                 else:
                     print(f"Received: {packet}")
