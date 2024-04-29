@@ -11,8 +11,6 @@ import select
 import struct
 import os
 
-DUMMY_DATA = open("dummy_data.html", "r",errors="replace").read()
-
 COMMAND_TABLE = {
     Commands.SMFIC_OPTNEG: milter.net.packet.POptNeg,
     Commands.SMFIC_MACRO: milter.net.packet.PMacro,
@@ -24,16 +22,18 @@ COMMAND_TABLE = {
     Commands.SMFIC_HEADER: milter.net.packet.PSMFICHeader,
     Commands.SMFIC_EOH: milter.net.packet.PSMFICEOH,
     Commands.SMFIC_BODY: milter.net.packet.PSMFICBody,
-    Commands.SMFIC_BODYEOB: milter.net.packet.PSMFICEOB
+    Commands.SMFIC_BODYEOB: milter.net.packet.PSMFICEOB,
+    Commands.SMFIC_ABORT: milter.net.packet.PSIMFICAbort,
+    Commands.SMFIC_QUIT: milter.net.packet.PSIMFICQuit,
 }
 
 ACTIONS = [
     OPTNEG_Actions.SMFIF_ADDHDRS,
-    # OPTNEG_Actions.SMFIF_CHGBODY,
-    # OPTNEG_Actions.SMFIF_ADDRCPT,
-    # OPTNEG_Actions.SMFIF_DELRCPT,
-    # OPTNEG_Actions.SMFIF_CHGHDRS,
-    # OPTNEG_Actions.SMFIF_QUARANTINE
+    OPTNEG_Actions.SMFIF_CHGBODY,
+    OPTNEG_Actions.SMFIF_ADDRCPT,
+    OPTNEG_Actions.SMFIF_DELRCPT,
+    OPTNEG_Actions.SMFIF_CHGHDRS,
+    OPTNEG_Actions.SMFIF_QUARANTINE
 ]
 
 class MilterState(Enum):
@@ -63,21 +63,6 @@ class MailerConnection:
 
     def __init__(self, job_id: str) -> None:
         self.job_id = job_id
-
-    # Data received from MTA, process it and send a response
-    def process(self, connection: socket.socket):
-        print(self.sender_info)
-        print(self.recipient_info)
-        print(self.headers)
-        print(self.body)
-        
-        rpb = SMFIR.ReplBody(DUMMY_DATA)
-        print("Sending ReplBody")
-        rpb.send(connection)
-        print("Sent ReplBody")
-
-        # Accept the mail   
-        connection.send(milter.net.packet.PSMFIRAccept().serialize())
 
 MAILERCONNATTRS = list(MailerConnection.__annotations__.keys())
 
@@ -111,6 +96,15 @@ class MailPiece:
         if name in MAILERCONNATTRS:
             return getattr(self.__mailpiece, name)
         return super().__getattribute__(name)
+    
+    def __setattr__(self, name: str, value) -> None:
+        if name in MAILERCONNATTRS:
+            if name == "body":
+                self.set_body(value)
+            else:
+                setattr(self.__mailpiece, name, value)
+        else:
+            super().__setattr__(name, value)
     
     def add_recipient(self, address: str):
         self.__mailpiece.recipient_info.append(Address(address, []))
@@ -214,7 +208,6 @@ class Milter:
                     self._threads.append(conn_thread)
     
     def __compute_protocol(self) -> int:
-        return 0
         protocol = []
         for key, value in OPTNEG_Protocol.SMFIP.items():
             if key not in COMMAND_TABLE:
@@ -257,6 +250,15 @@ class Milter:
                     continue
 
                 packet = COMMAND_TABLE[command].read(packet_len-1, connection)
+
+                if command == Commands.SMFIC_QUIT:
+                    connection.close()
+                    break
+                if command == Commands.SMFIC_ABORT:
+                    state = MilterState.CONNECT
+                    current_job = None
+                    jobs = {}
+                    continue
                 
                 if state == MilterState.CONNECT:
                     # Compute what actions are available and send them back

@@ -9,6 +9,8 @@ from milter.net.packet.PSMFICHeader import PSMFICHeader
 from milter.net.packet.PSMFICEOH import PSMFICEOH
 from milter.net.packet.PSMFICBody import PSMFICBody
 from milter.net.packet.PSMFICEOB import PSMFICEOB
+from milter.net.packet.PSIMFICAbort import PSIMFICAbort
+from milter.net.packet.PSIMFICQuit import PSIMFICQuit
 
 from milter.net.packet.PContinue import PContinue
 from milter.net.packet.PSMFIRAccept import PSMFIRAccept
