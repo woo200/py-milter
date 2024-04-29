@@ -234,6 +234,10 @@ class Milter:
                 abailable_jobs[job.job_id] = job
         return job
 
+    def __reset_jobs(self, jobs: dict[str, MailerConnection]):
+        for job in list(jobs):
+            del jobs[job]
+
     def __handle_conn(self, connection: socket.socket, addr):
         with connection:
             state: MilterState = MilterState.CONNECT
@@ -254,13 +258,15 @@ class Milter:
                 packet = COMMAND_TABLE[command].read(packet_len-1, connection)
 
                 if command == Commands.SMFIC_QUIT:
+                    state = MilterState.CONNECT
+                    del current_job
+                    self.__reset_jobs(jobs)
                     connection.close()
                     break
                 if command == Commands.SMFIC_ABORT:
                     state = MilterState.CONNECT
                     del current_job
-                    current_job = None
-                    jobs.clear()
+                    self.__reset_jobs(jobs)
                     continue
                 
                 if state == MilterState.CONNECT:
@@ -326,8 +332,7 @@ class Milter:
                         state = MilterState.CONNECT
                         del current_job
                         del mailpiece
-                        current_job = None
-                        jobs.clear()
+                        self.__reset_jobs(jobs)
                         continue
 
                 else:
