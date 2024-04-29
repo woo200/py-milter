@@ -63,10 +63,8 @@ myMilter.run()
 ```
 
 ## To-Do
-```[tasklist]
 	- [ ] Add Unix socket support
     - [ ] Allow more than one header of the same name
-```
 
 ---
 
