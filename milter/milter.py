@@ -250,6 +250,8 @@ class Milter:
 
                 packet = COMMAND_TABLE[command].read(packet_len-1, connection)
 
+                print(packet)
+
                 if command == Commands.SMFIC_QUIT:
                     connection.close()
                     break
