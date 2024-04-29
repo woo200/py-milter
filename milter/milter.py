@@ -234,7 +234,6 @@ class Milter:
     def __handle_conn(self, connection: socket.socket, addr):
         with connection:
             state: MilterState = MilterState.CONNECT
-
             jobs: dict[str, MailerConnection] = {}
             current_job: MailerConnection = None
 
@@ -256,6 +255,7 @@ class Milter:
                     break
                 if command == Commands.SMFIC_ABORT:
                     state = MilterState.CONNECT
+                    del current_job
                     current_job = None
                     jobs.clear()
                     continue
@@ -320,6 +320,8 @@ class Milter:
                             processor(mailpiece)
                         mailpiece.send_response(connection)
                         state = MilterState.CONNECT
+                        del current_job
+                        del mailpiece
                         current_job = None
                         jobs.clear()
                         continue
