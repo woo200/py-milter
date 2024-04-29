@@ -257,7 +257,7 @@ class Milter:
                 if command == Commands.SMFIC_ABORT:
                     state = MilterState.CONNECT
                     current_job = None
-                    jobs = {}
+                    jobs.clear()
                     continue
                 
                 if state == MilterState.CONNECT:
@@ -321,7 +321,7 @@ class Milter:
                         mailpiece.send_response(connection)
                         state = MilterState.CONNECT
                         current_job = None
-                        jobs = {}
+                        jobs.clear()
                         continue
 
                 else:
