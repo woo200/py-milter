@@ -244,7 +244,19 @@ class Milter:
             jobs: dict[str, MailerConnection] = {}
             current_job: MailerConnection = None
 
-            while True:                    
+            do_reset = False
+
+            while True:                 
+                if do_reset:
+                    del current_job # Delete the current job
+                    self.__reset_jobs(jobs) # Delete all the jobs
+
+                    # Redefine the variables
+                    state: MilterState = MilterState.CONNECT
+                    jobs: dict[str, MailerConnection] = {}
+                    current_job: MailerConnection = None
+                    do_reset = False
+
                 try:
                     packet_len, command = milter.net.packet.Packet.read_header(connection)
                 except struct.error:
@@ -258,15 +270,13 @@ class Milter:
                 packet = COMMAND_TABLE[command].read(packet_len-1, connection)
 
                 if command == Commands.SMFIC_QUIT:
-                    state = MilterState.CONNECT
                     del current_job
                     self.__reset_jobs(jobs)
                     connection.close()
                     break
                 if command == Commands.SMFIC_ABORT:
-                    state = MilterState.CONNECT
-                    del current_job
-                    self.__reset_jobs(jobs)
+                    # Reset the connection state
+                    do_reset = True
                     continue
                 
                 if state == MilterState.CONNECT:
@@ -329,10 +339,9 @@ class Milter:
                         for processor in self.processors:
                             processor(mailpiece)
                         mailpiece.send_response(connection)
-                        state = MilterState.CONNECT
-                        del current_job
-                        del mailpiece
-                        self.__reset_jobs(jobs)
+                        
+                        # Reset the connection state
+                        do_reset = True
                         continue
 
                 else:
