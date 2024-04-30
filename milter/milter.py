@@ -176,6 +176,7 @@ class Milter:
         }
         self.processors = processors
         self._threads = []
+        self.listener_socket = None
         # self.milterHandlers = milterHandlers
 
     def run(self):
@@ -191,6 +192,7 @@ class Milter:
             sock.listen()
         else:
             raise ValueError(f"Invalid socket type {self.args['socket_type']}")
+        self.listener_socket = sock
 
         read_list = [sock]
 
@@ -207,9 +209,11 @@ class Milter:
                     conn_thread.start()
                     self._threads.append(conn_thread)
     
-    def wait_for_threads(self):
+    def close(self):
+        self.listener_socket.close()
         for thread in self._threads:
             thread.join()
+    
         
     def __compute_protocol(self) -> int:
         protocol = []
