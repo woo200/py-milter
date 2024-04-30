@@ -9,6 +9,7 @@ import threading
 import socket
 import select
 import struct
+import shutil
 import os
 
 COMMAND_TABLE = {
@@ -172,6 +173,8 @@ class Milter:
             "port": 1234,
             "socket_type": "tcp", # tcp or unix
             "socket_path": "", # Path to unix socket
+            "chown": None, # chown the socket to this user:group
+            "chmod": 0o660, # chmod the socket to this mode
             **kwargs
         }
         self.processors = processors
@@ -191,6 +194,11 @@ class Milter:
                 os.remove(self.args['socket_path'])
             sock.bind(self.args['socket_path'])
             sock.listen()
+            if self.args['chown']:
+                user, *group = self.args['chown'].split(":")
+                group = group[0] if group else None
+                shutil.chown(self.args['socket_path'], user=user, group=group)
+            os.chmod(self.args['socket_path'], self.args['chmod'])
         else:
             raise ValueError(f"Invalid socket type {self.args['socket_type']}")
         self.listener_socket = sock
