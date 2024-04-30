@@ -186,6 +186,7 @@ class Milter:
             sock.listen()
         elif self.args['socket_type'] == "unix":
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(self.args['socket_path'])
             sock.listen()
         else:
