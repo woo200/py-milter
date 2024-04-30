@@ -170,6 +170,8 @@ class Milter:
         self.args = {
             "host": '0.0.0.0',
             "port": 1234,
+            "socket_type": "tcp", # tcp or unix
+            "socket_path": "", # Path to unix socket
             **kwargs
         }
         self.processors = processors
@@ -177,10 +179,19 @@ class Milter:
         # self.milterHandlers = milterHandlers
 
     def run(self):
-        sock = socket.socket()
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((self.args['host'], self.args['port']))
-        sock.listen()
+        if self.args['socket_type'] == "tcp":
+            sock = socket.socket()
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((self.args['host'], self.args['port']))
+            sock.listen()
+        elif self.args['socket_type'] == "unix":
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            if os.path.exists(self.args['socket_path']):
+                os.remove(self.args['socket_path'])
+            sock.bind(self.args['socket_path'])
+            sock.listen()
+        else:
+            raise ValueError(f"Invalid socket type {self.args['socket_type']}")
 
         read_list = [sock]
 

@@ -8,7 +8,7 @@ def processor(mailpiece: milter.MailPiece) -> None:
 # Initialize and run the milter with the defined processor
 myMilter = milter.Milter(
     [processor],    # List of processors, called in order
-    host="0.0.0.0", # TCP Host (optional, default)
-    port=1234,      # TCP Port (optional, default)
+    socket_type="unix",
+    socket_path="asdf",
 )
 myMilter.run()
