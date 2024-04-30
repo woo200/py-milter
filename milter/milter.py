@@ -197,6 +197,10 @@ class Milter:
                     conn_thread.start()
                     self._threads.append(conn_thread)
     
+    def wait_for_threads(self):
+        for thread in self._threads:
+            thread.join()
+        
     def __compute_protocol(self) -> int:
         protocol = []
         for key, value in OPTNEG_Protocol.SMFIP.items():
