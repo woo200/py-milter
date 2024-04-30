@@ -2,7 +2,7 @@ from milter.net.commands import Commands, OPTNEG_Protocol, OPTNEG_Actions
 from milter.net.packet import SMFIR
 import milter.net.packet
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 import threading
@@ -37,35 +37,22 @@ ACTIONS = [
 ]
 
 class MilterState(Enum):
-    CONNECT = 0
-    AWAIT = 1
-    AWAIT_JOBID = 2
-    READ_BODY = 3
-
-class JobState(Enum):
-    NEW = 0
-    READ_HEADERS = 1
-    READ_BODY = 2
-    PROCESSING = 3
-    DONE = 4
+    AWAIT_MAIL = 0
+    PROCESSING = 1
+    CONN_ABORT = 2
 
 @dataclass
 class Address:
     address: str
     ESMTP_args: list[str]
 
+@dataclass
 class MailerConnection:
-    job_id: str
+    job_id: str = ""
     sender_info: Address = None
-    recipient_info: list[Address] = []
+    recipient_info: list[Address] = field(default_factory=list)
     body: str = ""
-    headers: dict[str, str] = {}
-
-    def __init__(self, job_id: str) -> None:
-        self.job_id = job_id
-    
-    def __repr__(self) -> str:
-        return f"MailerConnection(job_id=\"{self.job_id}\", sender_info={self.sender_info}, recipient_info={self.recipient_info}, body=..., headers=...)"
+    headers: dict[str, str] = field(default_factory=dict)
 
 MAILERCONNATTRS = list(MailerConnection.__annotations__.keys())
 
@@ -216,46 +203,16 @@ class Milter:
             if key not in COMMAND_TABLE:
                 protocol.append(value)
         return sum(protocol)
-    
-    def __init_job(self, job, abailable_jobs=[], macro_data={}) -> MailerConnection:
-        job = MailerConnection(MilterState.AWAIT_JOBID) if job is None else job
-        if 'i' in macro_data:
-            macro_jobid = macro_data['i']
-            # If we have a job id, and it's not the same as the current job
-            if macro_jobid in abailable_jobs and job.job_id != macro_jobid:
-                # Stash the old job
-                abailable_jobs[job.job_id] = job
-                # Get the new job
-                job = abailable_jobs[macro_jobid]
-
-            if job.job_id == MilterState.AWAIT_JOBID:
-                job.job_id = macro_jobid
-                # stash the job
-                abailable_jobs[job.job_id] = job
-        return job
-
-    def __reset_jobs(self, jobs: dict[str, MailerConnection]):
-        for job in list(jobs):
-            del jobs[job]
 
     def __handle_conn(self, connection: socket.socket, addr):
         with connection:
-            state: MilterState = MilterState.CONNECT
-            jobs: dict[str, MailerConnection] = {}
-            current_job: MailerConnection = None
+            state: MilterState = MilterState.AWAIT_MAIL
+            current_job: MailerConnection = MailerConnection()
 
-            do_reset = False
-
-            while True:                 
-                if do_reset:
-                    del current_job # Delete the current job
-                    self.__reset_jobs(jobs) # Delete all the jobs
-
-                    # Redefine the variables
-                    state: MilterState = MilterState.CONNECT
-                    jobs: dict[str, MailerConnection] = {}
-                    current_job: MailerConnection = None
-                    do_reset = False
+            while True:
+                if state == MilterState.CONN_ABORT:
+                    state = MilterState.AWAIT_MAIL
+                    current_job = MailerConnection()
 
                 try:
                     packet_len, command = milter.net.packet.Packet.read_header(connection)
@@ -270,80 +227,70 @@ class Milter:
                 packet = COMMAND_TABLE[command].read(packet_len-1, connection)
 
                 if command == Commands.SMFIC_QUIT:
-                    del current_job
-                    self.__reset_jobs(jobs)
+                    # TODO: Handle this
                     connection.close()
                     break
                 if command == Commands.SMFIC_ABORT:
-                    # Reset the connection state
-                    do_reset = True
+                    state = MilterState.CONN_ABORT
                     continue
                 
-                if state == MilterState.CONNECT:
-                    # Compute what actions are available and send them back
-                    if command == Commands.SMFIC_OPTNEG:
-                        packet.protocol = self.__compute_protocol()
-                        packet.actions = sum(ACTIONS)
-                        connection.send(packet.serialize())
-                    elif command == Commands.SMFIC_HELO:
-                        connection.send(milter.net.packet.PContinue().serialize())
-                        state = MilterState.AWAIT
-                    elif command == Commands.SMFIC_CONNECT:
-                        connection.send(milter.net.packet.PContinue().serialize())
+                # Compute what actions are available and send them back
+                if command == Commands.SMFIC_OPTNEG:
+                    packet.protocol = self.__compute_protocol()
+                    packet.actions = sum(ACTIONS)
+                    connection.send(packet.serialize())
+                elif command == Commands.SMFIC_HELO:
+                    connection.send(milter.net.packet.PContinue().serialize())
+                    state = MilterState.PROCESSING
+                elif command == Commands.SMFIC_CONNECT:
+                    connection.send(milter.net.packet.PContinue().serialize())
+            
+                # Handle macros
+                if command == Commands.SMFIC_MACRO:
+                    data = packet.nameval
+
+                    if packet.cmd_code == Commands.SMFIC_MAIL:
+                        pass # We dont do anything with this 
+                    
+                    if packet.cmd_code == Commands.SMFIC_RCPT:
+                        pass # TODO: Handle this
                 
-                elif state == MilterState.AWAIT:
-                    # Handle macros
-                    if command == Commands.SMFIC_MACRO:
-                        data = packet.nameval
-                        current_job = self.__init_job(current_job, jobs, data)
+                # We recieved a new piece of mail
+                if command == Commands.SMFIC_MAIL:
+                    current_job.sender_info = Address(packet.mail_from, packet.ESMTP_args)
+                    connection.send(milter.net.packet.PContinue().serialize())
+                    state = MilterState.PROCESSING
 
-                        if packet.cmd_code == Commands.SMFIC_MAIL:
-                            pass # We dont do anything with this 
-                        
-                        if packet.cmd_code == Commands.SMFIC_RCPT:
-                            pass # TODO: Handle this
+                # We recieved a new recipient
+                elif command == Commands.SMFIC_RCPT:
+                    current_job.recipient_info.append(Address(packet.mail_to, packet.ESMTP_args))
+                    connection.send(milter.net.packet.PContinue().serialize())
+
+                # We recieved something we need to respond to
+                elif command == ord('T'):
+                    connection.send(milter.net.packet.PContinue().serialize())
+
+                # We recieved a header
+                elif command == Commands.SMFIC_HEADER:
+                    current_job.headers[packet.name] = packet.value
+                    connection.send(milter.net.packet.PContinue().serialize())
+
+                # We recieved the end of headers
+                elif command == Commands.SMFIC_EOH:
+                    connection.send(milter.net.packet.PContinue().serialize())
+                
+                # Start reading the body
+                elif command == Commands.SMFIC_BODY:
+                    current_job.body += packet.body
+                
+                # We recieved the end of the body
+                elif command == Commands.SMFIC_BODYEOB:
+                    # Process the mail
+                    mailpiece = MailPiece(current_job)
+                    for processor in self.processors:
+                        processor(mailpiece)
+                    mailpiece.send_response(connection)
                     
-                    current_job = self.__init_job(current_job)
-                    # We recieved a new piece of mail
-                    if command == Commands.SMFIC_MAIL:
-                        current_job.sender_info = Address(packet.mail_from, packet.ESMTP_args)
-                        connection.send(milter.net.packet.PContinue().serialize())
+                    state = MilterState.CONN_ABORT
+                    continue
 
-                    # We recieved a new recipient
-                    elif command == Commands.SMFIC_RCPT:
-                        current_job.recipient_info.append(Address(packet.mail_to, packet.ESMTP_args))
-                        print(current_job)
-                        connection.send(milter.net.packet.PContinue().serialize())
-
-                    # We recieved something we need to respond to
-                    elif command == ord('T'):
-                        connection.send(milter.net.packet.PContinue().serialize())
-
-                    # We recieved a header
-                    elif command == Commands.SMFIC_HEADER:
-                        current_job.headers[packet.name] = packet.value
-                        connection.send(milter.net.packet.PContinue().serialize())
-
-                    # We recieved the end of headers
-                    elif command == Commands.SMFIC_EOH:
-                        connection.send(milter.net.packet.PContinue().serialize())
-                    
-                    # Start reading the body
-                    elif command == Commands.SMFIC_BODY:
-                        current_job.body += packet.body
-                    
-                    # We recieved the end of the body
-                    elif command == Commands.SMFIC_BODYEOB:
-                        # Process the mail
-                        mailpiece = MailPiece(current_job)
-                        for processor in self.processors:
-                            processor(mailpiece)
-                        mailpiece.send_response(connection)
-                        
-                        # Reset the connection state
-                        do_reset = True
-                        continue
-
-                else:
-                    print(f"Received: {packet}")
-                    # connection.close()

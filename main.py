@@ -3,8 +3,7 @@ import random
 
 # Define a custom processor that modifies mail headers and body
 def processor(mailpiece: milter.MailPiece) -> None:
-    mailpiece.change_header("Date", "Hey look at me!", 0)
-    mailpiece.body += "Appended to body!"
+    print(f"----------------\n{mailpiece.recipient_info}\n----------------")
 
 # Initialize and run the milter with the defined processor
 myMilter = milter.Milter(
