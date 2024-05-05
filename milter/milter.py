@@ -66,22 +66,24 @@ class MailState(Enum):
 
 class MailPiece:
     __mailpiece: MailerConnection
-    __required_actions: list[str] = {
-        "ADDRCPT": [],
-        "DELRCPT": [],
-        "CHGBODY": True,
-        "DISCARD": False,
-        "ADDHDRS": [],
-        "CHGHDRS": [],
-        "QUARANTINE": False,
-        "REJECT": False,
-        "TEMPFAIL": False,
-        "REPLYCODE": None
-    }
-    state: MailState = MailState.GOOD
+    __required_actions: list[str]
+    state: MailState
 
     def __init__(self, mailpiece: MailerConnection) -> None:
         self.__mailpiece = mailpiece
+        self.__required_actions: list[str] = {
+            "ADDRCPT": [],
+            "DELRCPT": [],
+            "CHGBODY": True,
+            "DISCARD": False,
+            "ADDHDRS": [],
+            "CHGHDRS": [],
+            "QUARANTINE": False,
+            "REJECT": False,
+            "TEMPFAIL": False,
+            "REPLYCODE": None
+        }
+        self.state: MailState = MailState.GOOD
     
     def __getattribute__(self, name: str):
         if name in MAILERCONNATTRS:
@@ -150,8 +152,7 @@ class MailPiece:
             for action in self.__required_actions["CHGHDRS"]:
                 response += SMFIR.ChangeHeader(action["name"], action["value"], action["index"]).serialize()
             if self.__required_actions["REPLYCODE"]:
-                response += SMFIR.ReplyCode(self.__required_actions["REPLYCODE"]["code"], self.__required_actions["REPLYCODE"]["message"]).serialize()
-            
+                response += SMFIR.ReplyCode(self.__required_actions["REPLYCODE"]["code"], self.__required_actions["REPLYCODE"]["message"]).serialize()            
             # Send the response
             connection.send(response)
             # Accept the changes
@@ -316,7 +317,9 @@ class Milter:
                     mailpiece = MailPiece(current_job)
                     for processor in self.processors:
                         processor(mailpiece)
+
                     mailpiece.send_response(connection)
+                    del mailpiece
                     
                     state = MilterState.CONN_ABORT
                     continue

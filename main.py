@@ -3,12 +3,11 @@ import random
 
 # Define a custom processor that modifies mail headers and body
 def processor(mailpiece: milter.MailPiece) -> None:
-    print(f"----------------\n{mailpiece.recipient_info}\n----------------")
+    random_str = ''.join(random.choices("abcdefghijklmnopqrstuvwxyz", k=10))
+    mailpiece.add_header("X-Filter-Test", f"Test - {random_str}")
 
 # Initialize and run the milter with the defined processor
 myMilter = milter.Milter(
     [processor],    # List of processors, called in order
-    socket_type="unix",
-    socket_path="asdf",
 )
 myMilter.run()
